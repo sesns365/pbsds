@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>正向行為支持：數位觀測系統</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#0EA5E9',   // Sky 500 - 溫和穩定的藍
+                        star: '#F59E0B',      // Amber 500 - 溫暖的星黃
+                        surface: '#F8FAFC',   // Slate 50 - 柔和背景
+                        textMain: '#1E293B',  // Slate 800
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- canvas-confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    
+    <!-- html2canvas -->
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+    <style>
+        /* 隱藏捲軸但保留捲動功能，適合手機滑動 */
+        ::-webkit-scrollbar { width: 0px; height: 0px; background: transparent; }
+        
+        /* 星星互動動畫 */
+        .star-btn { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+        .star-btn:active { transform: scale(0.85); }
+        .star-active { color: #F59E0B; transform: scale(1.1); text-shadow: 0 0 15px rgba(245, 158, 11, 0.4); }
+        .star-inactive { color: #E2E8F0; }
+
+        /* 平滑過渡 */
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Toast 樣式 */
+        #toast { transition: opacity 0.3s, transform 0.3s; z-index: 9999; }
+        .toast-show { opacity: 1; transform: translateY(0); }
+        .toast-hide { opacity: 0; transform: translateY(-20px); pointer-events: none; }
+    </style>
+</head>
+<body class="bg-surface text-textMain min-h-screen font-sans pb-24 select-none">
+
+    <!-- 頂部標題列 -->
+    <header class="bg-white shadow-sm sticky top-0 z-40">
+        <div class="px-4 py-3 flex items-center justify-between">
+            <h1 class="text-lg font-bold text-primary flex items-center">
+                <i class="fas fa-leaf mr-2"></i><span id="header-student-name">正向行為觀測</span>
+            </h1>
+            <div class="flex items-center gap-2">
+                <!-- 雲端狀態指示燈 -->
+                <span id="cloud-status" class="flex items-center text-xs font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-full" title="離線模式">
+                    <i class="fas fa-cloud text-[10px] mr-1"></i>連線中...
+                </span>
+                <div class="text-sm text-slate-500 font-medium hidden sm:block" id="header-date"></div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 全域 Toast 提示 -->
+    <div id="toast" class="toast-hide fixed top-16 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-3 w-max max-w-[90%]">
+        <i class="fas fa-check-circle text-green-400 text-xl"></i>
+        <span id="toast-msg" class="font-medium text-sm">已儲存！辛苦老師了</span>
+    </div>
+
+    <!-- 主內容區塊 (Views) -->
+    <main class="p-3 sm:p-4 relative max-w-3xl mx-auto">
+
+        <!-- ================= 模組一：設定與課表中心 ================= -->
+        <section id="view-settings" class="view-section hidden fade-in space-y-5">
+            <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100">
+                <h2 class="text-lg font-bold mb-4 border-b pb-2"><i class="fas fa-user-cog mr-2 text-primary"></i>基本設定</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-bold text-slate-600 mb-1">個案姓名</label>
+                        <input type="text" id="set-name" class="w-full border rounded-xl p-3 bg-slate-50 focus:ring-2 focus:ring-primary outline-none transition" onchange="saveSettings()">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-slate-600 mb-1">本週起始日期 (週一)</label>
+                        <input type="date" id="set-date" class="w-full border rounded-xl p-3 bg-slate-50 focus:ring-2 focus:ring-primary outline-none transition" onchange="saveSettings()">
+                    </div>
+                    <div class="flex gap-3">
+                        <div class="flex-1">
+                            <label class="block text-sm font-bold text-slate-600 mb-1">日目標星數</label>
+                            <input type="number" id="set-daily" class="w-full border rounded-xl p-3 bg-slate-50 focus:ring-2 focus:ring-primary outline-none transition text-center" onchange="saveSettings()">
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-sm font-bold text-slate-600 mb-1">週目標星數</label>
+                            <input type="number" id="set-weekly" class="w-full border rounded-xl p-3 bg-slate-50 focus:ring-2 focus:ring-primary outline-none transition text-center" onchange="saveSettings()">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 授課教師群設定 (對照表) -->
+            <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100">
+                <h2 class="text-lg font-bold mb-3 border-b pb-2"><i class="fas fa-chalkboard-teacher mr-2 text-primary"></i>授課教師群設定</h2>
+                <p class="text-[11px] sm:text-xs text-slate-500 mb-3 leading-relaxed">設定好對應教師後，下方編排課表時選擇科目將會自動帶入該教師姓名。</p>
+                <div id="teacher-mapping-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3">
+                    <!-- JS 動態生成 -->
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100">
+                <h2 class="text-lg font-bold mb-3 border-b pb-2 flex justify-between items-center">
+                    <span><i class="fas fa-tasks mr-2 text-primary"></i>自訂行為檢核清單 (模式B)</span>
+                    <button onclick="addChecklistItem()" class="text-sm bg-primary text-white w-8 h-8 flex items-center justify-center rounded-full shadow-sm"><i class="fas fa-plus"></i></button>
+                </h2>
+                <ul id="setting-checklist" class="space-y-2 mt-2">
+                    <!-- JS 動態生成 -->
+                </ul>
+            </div>
+
+            <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100 overflow-hidden">
+                <h2 class="text-lg font-bold mb-3 border-b pb-2"><i class="fas fa-calendar-alt mr-2 text-primary"></i>本學期課表設定</h2>
+                <div class="overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
+                    <table class="min-w-max w-full border-collapse">
+                        <thead>
+                            <tr class="bg-slate-100 text-slate-600 text-[11px] sm:text-sm">
+                                <th class="p-2 border font-bold">節次</th>
+                                <th class="p-2 border font-bold">週一</th>
+                                <th class="p-2 border font-bold">週二</th>
+                                <th class="p-2 border font-bold">週三</th>
+                                <th class="p-2 border font-bold">週四</th>
+                                <th class="p-2 border font-bold">週五</th>
+                            </tr>
+                        </thead>
+                        <tbody id="schedule-tbody">
+                            <!-- JS 動態生成 10 節課 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= 模組二：極速評分介面 ================= -->
+        <section id="view-rating" class="view-section hidden fade-in space-y-4 sm:space-y-5">
+            <!-- 返回按鈕與標題 -->
+            <div class="flex items-center gap-2 sm:gap-3 mb-1">
+                <button onclick="switchView('view-dashboard')" class="bg-white border border-slate-200 text-slate-600 px-3 py-2 sm:px-4 rounded-xl hover:bg-slate-50 transition font-bold text-xs sm:text-sm shadow-sm flex items-center">
+                    <i class="fas fa-arrow-left mr-1.5"></i> 返回
+                </button>
+                <h2 class="text-base sm:text-lg font-bold text-slate-800 flex-1 text-center pr-16 sm:pr-20" id="rating-header-title">週一 第1節</h2>
+            </div>
+
+            <!-- 自動帶出資訊 -->
+            <div class="bg-white rounded-2xl p-3 sm:p-4 shadow-sm border border-slate-100 flex justify-between items-center px-4">
+                <div class="text-xs sm:text-sm font-bold text-slate-500">科目：<span id="rate-subject" class="text-primary text-sm sm:text-base ml-1">載入中</span></div>
+                <div class="text-xs sm:text-sm font-bold text-slate-500">任課：<span id="rate-teacher" class="text-slate-800 text-sm sm:text-base ml-1">載入中</span></div>
+            </div>
+
+            <!-- 評分主體 -->
+            <div class="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-100 text-center relative overflow-hidden">
+                <!-- 模式切換 -->
+                <div class="flex justify-center mb-5 sm:mb-6">
+                    <div class="bg-slate-100 p-1 rounded-full inline-flex relative w-full sm:w-auto">
+                        <button onclick="toggleRatingMode('A')" id="mode-btn-A" class="flex-1 px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm font-bold transition z-10">直覺給星</button>
+                        <button onclick="toggleRatingMode('B')" id="mode-btn-B" class="flex-1 px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm font-bold transition z-10">行為檢核</button>
+                    </div>
+                </div>
+
+                <!-- 模式 A：直覺大星星 -->
+                <div id="rating-mode-A" class="py-2 sm:py-4">
+                    <div class="flex justify-center gap-1.5 sm:gap-4" id="stars-container">
+                        <i class="fas fa-star text-[45px] sm:text-6xl star-btn star-inactive" data-star="1" onclick="setModeAStar(1)"></i>
+                        <i class="fas fa-star text-[45px] sm:text-6xl star-btn star-inactive" data-star="2" onclick="setModeAStar(2)"></i>
+                        <i class="fas fa-star text-[45px] sm:text-6xl star-btn star-inactive" data-star="3" onclick="setModeAStar(3)"></i>
+                        <i class="fas fa-star text-[45px] sm:text-6xl star-btn star-inactive" data-star="4" onclick="setModeAStar(4)"></i>
+                        <i class="fas fa-star text-[45px] sm:text-6xl star-btn star-inactive" data-star="5" onclick="setModeAStar(5)"></i>
+                    </div>
+                    <div class="mt-4 text-lg sm:text-xl font-bold text-slate-600" id="mode-A-text">請點擊給予星數</div>
+                </div>
+
+                <!-- 模式 B：具體行為勾選 -->
+                <div id="rating-mode-B" class="hidden text-left">
+                    <div id="rate-checklist" class="space-y-2.5 sm:space-y-3 mb-4">
+                        <!-- JS 動態生成 Checkbox -->
+                    </div>
+                    <div class="bg-slate-50 rounded-xl p-3 text-center border">
+                        <span class="text-xs sm:text-sm font-bold text-slate-500 block mb-1">系統自動換算結果</span>
+                        <div class="text-star text-2xl font-bold">
+                            <span id="mode-B-star-result">1</span> <i class="fas fa-star"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 質性描述 -->
+            <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100">
+                <label class="block text-sm font-bold text-slate-600 mb-2"><i class="fas fa-comment-dots mr-2 text-primary"></i>質性描述</label>
+                <textarea id="rate-note" rows="3" class="w-full border rounded-xl p-3 bg-slate-50 focus:ring-2 focus:ring-primary outline-none transition resize-none text-sm" placeholder="請輸入質性描述..."></textarea>
+            </div>
+
+            <button onclick="submitRating()" class="w-full bg-primary hover:bg-sky-600 text-white font-bold text-base sm:text-lg py-3.5 sm:py-4 rounded-2xl shadow-lg active:scale-95 transition flex justify-center items-center gap-2">
+                <i class="fas fa-paper-plane"></i> 送出本節評分
+            </button>
+        </section>
+
+        <!-- ================= 模組三：儀表板與矩陣 ================= -->
+        <section id="view-dashboard" class="view-section hidden fade-in space-y-4 sm:space-y-6">
+            
+            <!-- 本週表現矩陣 (移至上方，方便點擊) -->
+            <div class="bg-white rounded-2xl p-3 sm:p-4 shadow-sm border border-slate-100">
+                <div class="flex justify-between items-center mb-3 sm:mb-4">
+                    <h2 class="text-base sm:text-lg font-bold flex items-center">
+                        <i class="fas fa-th mr-2 text-primary"></i>課表評分區
+                    </h2>
+                    <!-- 週次切換器 -->
+                    <div class="flex items-center bg-slate-100 rounded-full p-1 border border-slate-200">
+                        <button onclick="changeWeek(-1)" class="px-2 sm:px-3 py-1 text-slate-500 hover:text-primary transition active:bg-slate-200 rounded-full"><i class="fas fa-chevron-left text-xs sm:text-sm"></i></button>
+                        <span class="text-[11px] sm:text-xs font-bold px-1 sm:px-2 text-slate-700" id="dash-week-label">載入中</span>
+                        <button onclick="changeWeek(1)" class="px-2 sm:px-3 py-1 text-slate-500 hover:text-primary transition active:bg-slate-200 rounded-full"><i class="fas fa-chevron-right text-xs sm:text-sm"></i></button>
+                    </div>
+                </div>
+                
+                <div class="overflow-hidden rounded-lg border border-slate-200">
+                    <table class="w-full border-collapse text-center table-fixed">
+                        <thead>
+                            <tr class="bg-slate-100 text-slate-500 font-bold border-b text-[10px] sm:text-xs">
+                                <th class="w-10 sm:w-12 py-1.5 border-r">節</th>
+                                <th class="py-1.5 leading-tight border-r" id="dash-th-1">一</th>
+                                <th class="py-1.5 leading-tight border-r" id="dash-th-2">二</th>
+                                <th class="py-1.5 leading-tight border-r" id="dash-th-3">三</th>
+                                <th class="py-1.5 leading-tight border-r" id="dash-th-4">四</th>
+                                <th class="py-1.5 leading-tight" id="dash-th-5">五</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dash-matrix-body" class="text-sm">
+                            <!-- JS 生成 -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="text-right mt-2">
+                    <span class="text-[10px] bg-amber-50 text-amber-600 px-2 py-1 rounded font-bold"><i class="fas fa-hand-pointer mr-1"></i>點選上方格子打分數</span>
+                </div>
+            </div>
+
+            <!-- 今日進度 -->
+            <div class="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-100 text-center relative overflow-hidden">
+                <h2 class="text-base sm:text-lg font-bold text-slate-600 mb-2">今日星數累積</h2>
+                <div class="flex justify-center items-end gap-2 mb-4">
+                    <span class="text-5xl font-black text-star" id="dash-today-stars">0</span>
+                    <span class="text-lg sm:text-xl font-bold text-slate-400 mb-1">/ <span id="dash-daily-target">20</span></span>
+                </div>
+                <!-- 進度條 -->
+                <div class="w-full bg-slate-100 h-5 sm:h-6 rounded-full overflow-hidden relative">
+                    <div id="dash-progress-bar" class="h-full bg-gradient-to-r from-amber-400 to-star transition-all duration-1000 ease-out w-0 rounded-full"></div>
+                </div>
+                <div id="dash-cheer" class="mt-4 text-sm sm:text-base text-primary font-bold opacity-0 transition-opacity duration-500">
+                    🎉 太棒了！你今天達成了對自己的承諾！ 🎉
+                </div>
+            </div>
+
+        </section>
+
+        <!-- ================= 模組四：統計圖表 ================= -->
+        <section id="view-analytics" class="view-section hidden fade-in space-y-4 sm:space-y-6">
+            
+            <!-- 每週 / 每月 切換 -->
+            <div class="flex justify-center bg-slate-100 p-1 rounded-full w-max mx-auto border border-slate-200">
+                <button id="btn-chart-week" onclick="setChartMode('week')" class="px-5 sm:px-6 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-bold bg-white text-primary shadow-sm transition z-10">每週</button>
+                <button id="btn-chart-month" onclick="setChartMode('month')" class="px-5 sm:px-6 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-bold text-slate-500 hover:text-slate-700 transition z-10">每月</button>
+            </div>
+
+            <!-- 月份選擇器 -->
+            <div id="chart-month-selector" class="hidden text-center mb-2">
+                <input type="month" id="analytics-month" class="border rounded-xl p-2 bg-white shadow-sm text-sm font-bold outline-none text-slate-600 focus:ring-2 focus:ring-primary" onchange="renderAnalytics()">
+            </div>
+
+            <div id="export-capture-area" class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100">
+                <div class="text-center mb-4 sm:mb-6">
+                    <h2 class="text-lg sm:text-xl font-bold text-slate-800"><span id="chart-student-name"></span> <span id="chart-report-title">的每週觀測報告</span></h2>
+                    <p class="text-xs sm:text-sm text-slate-500 mt-1">累積總星數：<span id="chart-total-stars" class="font-bold text-star text-base sm:text-lg">0</span> <span id="chart-target-text"></span></p>
+                </div>
+                
+                <div class="relative h-56 sm:h-64 w-full">
+                    <canvas id="weeklyChart"></canvas>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 sm:gap-4">
+                <button onclick="downloadPNG()" class="bg-slate-800 text-white font-bold py-3 rounded-xl shadow flex flex-col items-center justify-center gap-1 hover:bg-slate-700 active:scale-95 transition">
+                    <i class="fas fa-image text-lg sm:text-xl"></i>
+                    <span class="text-xs sm:text-sm">下載圖檔</span>
+                </button>
+                <button onclick="downloadWord()" class="bg-blue-600 text-white font-bold py-3 rounded-xl shadow flex flex-col items-center justify-center gap-1 hover:bg-blue-700 active:scale-95 transition">
+                    <i class="fas fa-file-word text-lg sm:text-xl"></i>
+                    <span class="text-xs sm:text-sm">下載 Word</span>
+                </button>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- 底部導航列 (Bottom Navigation) -->
+    <!-- 移除同步頁面，均分 3 個按鈕空間，並增加 padding-bottom 適配手機底部操作區域 -->
+    <nav class="fixed bottom-0 w-full bg-white border-t border-slate-200 flex justify-around items-center pb-safe z-40 shadow-[0_-5px_15px_rgba(0,0,0,0.05)] h-16 sm:h-20 max-w-3xl mx-auto left-0 right-0">
+        <button onclick="switchView('view-dashboard')" class="nav-btn flex-1 h-full flex flex-col justify-center items-center gap-1 text-primary relative active:bg-slate-50 transition">
+            <i class="fas fa-calendar-check text-xl sm:text-2xl"></i>
+            <span class="text-[10px] sm:text-xs font-bold mt-0.5">課表評分</span>
+        </button>
+        <button onclick="switchView('view-analytics')" class="nav-btn flex-1 h-full flex flex-col justify-center items-center gap-1 text-slate-400 active:bg-slate-50 transition border-l border-r border-slate-100">
+            <i class="fas fa-chart-line text-xl sm:text-2xl"></i>
+            <span class="text-[10px] sm:text-xs font-bold mt-0.5">圖表分析</span>
+        </button>
+        <button onclick="switchView('view-settings')" class="nav-btn flex-1 h-full flex flex-col justify-center items-center gap-1 text-slate-400 active:bg-slate-50 transition">
+            <i class="fas fa-cogs text-xl sm:text-2xl"></i>
+            <span class="text-[10px] sm:text-xs font-bold mt-0.5">設定課表</span>
+        </button>
+    </nav>
+
+    <!-- 主程式邏輯 -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // ================= 系統核心資料結構 =================
+        const STORAGE_KEY = 'ebd_pbs_data';
+        const SUBJECT_LIST = ['國語', '數學', '社會', '自然科學', '英語', '音樂', '美術', '體育', '社團', '學校行事', '校定課程', '國際教育', '健康', '綜合活動', '本土語文', '資訊'];
+        const PERIOD_NAMES = ['早自修', '第 1 節', '第 2 節', '第 3 節', '第 4 節', '午餐', '午休', '第 5 節', '第 6 節', '第 7 節'];
+        const PERIOD_TIMES = ['08:00-08:40', '08:40-09:20', '09:30-10:10', '10:30-11:10', '11:20-12:00', '12:00-12:40', '12:40-13:20', '13:30-14:10', '14:20-15:00', '15:10-15:50'];
+
+        let appData = {
+            settings: {
+                studentName: '董生',
+                weekStartDate: getMonday(new Date()).toISOString().split('T')[0],
+                dailyTarget: 20,
+                weeklyTarget: 100,
+                checklist: ['準時進入教室，坐在座位上', '遇到挫折時能用深呼吸代替生氣', '上課時專注聽講，不干擾他人', '友善對待同學，使用禮貌用語'],
+                teacherMapping: {} 
+            },
+            schedule: {}, 
+            records: {}   
+        };
+
+        let currentRatingMode = 'A';
+        let currentModeAStars = 0;
+        let chartInstance = null;
+        let currentChartMode = 'week'; 
+        let currentRatingContext = { d: 1, p: 1, dateStr: '' }; 
+        let isFirstLoad = true;
+
+        // ================= 使用者專屬 Firebase 設定 =================
+        let db = null;
+        let auth = null;
+        let currentUser = null;
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDC1nHFgULThMcqJ9IfRO-AsHIRhTJG3Ec",
+            authDomain: "pbsds-74249.firebaseapp.com",
+            projectId: "pbsds-74249",
+            storageBucket: "pbsds-74249.firebasestorage.app",
+            messagingSenderId: "202889046853",
+            appId: "1:202889046853:web:cde8d691e5d2678328ec2c"
+        };
+
+        // ================= 初始化與生命週期 =================
+        async function initApp() {
+            const dateStr = new Date().toLocaleDateString('zh-TW', { month: 'short', day: 'numeric', weekday: 'short' });
+            if (document.getElementById('header-date')) document.getElementById('header-date').innerText = dateStr;
+
+            // 初始化指定的 Firebase 專案
+            const app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+
+            // 採用匿名登入機制
+            await signInAnonymously(auth);
+
+            onAuthStateChanged(auth, (user) => {
+                currentUser = user;
+                if (user) {
+                    setupFirestoreListener();
+                    document.getElementById('cloud-status').innerHTML = '<i class="fas fa-cloud text-[10px] mr-1 text-green-500"></i><span class="text-green-600">已連線</span>';
+                    document.getElementById('cloud-status').classList.replace('bg-slate-100', 'bg-green-100');
+                }
+            });
+        }
+
+        function setupFirestoreListener() {
+            if (!currentUser) return;
+            // 指定寫入根目錄 collection，所有設備共享同一份資料
+            const docRef = doc(db, 'ebd_records', 'globalData');
+            
+            onSnapshot(docRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    appData = docSnap.data();
+                } else {
+                    setDoc(docRef, appData);
+                }
+                refreshAllViews();
+                if (isFirstLoad) {
+                    window.switchView('view-dashboard');
+                    isFirstLoad = false;
+                }
+            }, (error) => {
+                console.error("Firestore 同步錯誤:", error);
+            });
+        }
+
+        async function saveData() {
+            if (currentUser && db) {
+                const docRef = doc(db, 'ebd_records', 'globalData');
+                await setDoc(docRef, appData);
+            }
+        }
+
+        function refreshAllViews() {
+            if(appData.settings.weekStartDate) {
+                const weekStart = new Date(appData.settings.weekStartDate);
+                document.getElementById('analytics-month').value = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}`;
+            }
+
+            renderSettings();
+            renderDashboard();
+            if(!document.getElementById('view-analytics').classList.contains('hidden')){
+                window.renderAnalytics();
+            }
+            if(!document.getElementById('view-rating').classList.contains('hidden')){
+                updateRatingContext();
+            }
+        }
+
+        // ================= 日期與週次輔助函數 =================
+        function getTargetDate(d) {
+            const baseDate = new Date(appData.settings.weekStartDate);
+            baseDate.setDate(baseDate.getDate() + (d - 1));
+            return baseDate;
+        }
+        function formatDateStr(dateObj) {
+            const yyyy = dateObj.getFullYear();
+            const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const dd = String(dateObj.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        }
+        function getShortDate(dateObj) {
+            return `${dateObj.getMonth() + 1}/${dateObj.getDate()}`;
+        }
+        function getMonday(d) {
+            d = new Date(d);
+            var day = d.getDay(), diff = d.getDate() - day + (day == 0 ? -6:1);
+            return new Date(d.setDate(diff));
+        }
+
+        // ================= 將 UI 綁定 Function 掛載到 window =================
+        window.changeWeek = function(offset) {
+            const currentDate = new Date(appData.settings.weekStartDate);
+            currentDate.setDate(currentDate.getDate() + (offset * 7));
+            appData.settings.weekStartDate = formatDateStr(currentDate);
+            document.getElementById('analytics-month').value = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+            saveData();
+            refreshAllViews();
+        };
+
+        window.setChartMode = function(mode) {
+            currentChartMode = mode;
+            const btnW = document.getElementById('btn-chart-week');
+            const btnM = document.getElementById('btn-chart-month');
+            const monthSel = document.getElementById('chart-month-selector');
+
+            if (mode === 'week') {
+                btnW.className = 'px-5 sm:px-6 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-bold bg-white text-primary shadow-sm transition z-10';
+                btnM.className = 'px-5 sm:px-6 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-bold text-slate-500 hover:text-slate-700 transition z-10';
+                monthSel.classList.add('hidden');
+            } else {
+                btnW.className = 'px-5 sm:px-6 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-bold text-slate-500 hover:text-slate-700 transition z-10';
+                btnM.className = 'px-5 sm:px-6 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-bold bg-white text-primary shadow-sm transition z-10';
+                monthSel.classList.remove('hidden');
+            }
+            window.renderAnalytics();
+        };
+
+        window.switchView = function(viewId) {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('text-primary');
+                btn.classList.add('text-slate-400');
+            });
+
+            document.getElementById(viewId).classList.remove('hidden');
+            const activeBtn = document.querySelector(`button[onclick="switchView('${viewId}')"]`);
+            if(activeBtn) {
+                activeBtn.classList.remove('text-slate-400');
+                activeBtn.classList.add('text-primary');
+            }
+
+            if(viewId === 'view-dashboard') renderDashboard();
+            if(viewId === 'view-analytics') window.renderAnalytics();
+            if(viewId === 'view-rating') updateRatingContext();
+            
+            window.scrollTo(0, 0);
+        };
+
+        window.openRatingScreen = function(d, p, dateStr) {
+            currentRatingContext = { d, p, dateStr };
+            window.switchView('view-rating');
+        };
+
+        window.showToast = function(msg) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-msg').innerText = msg;
+            toast.classList.remove('toast-hide');
+            toast.classList.add('toast-show');
+            setTimeout(() => {
+                toast.classList.remove('toast-show');
+                toast.classList.add('toast-hide');
+            }, 3000);
+        };
+
+        // ================= 模組一：設定與課表邏輯 =================
+        function renderSettings() {
+            document.getElementById('set-name').value = appData.settings.studentName || '';
+            document.getElementById('set-date').value = appData.settings.weekStartDate || '';
+            document.getElementById('set-daily').value = appData.settings.dailyTarget || 20;
+            document.getElementById('set-weekly').value = appData.settings.weeklyTarget || 100;
+            document.getElementById('header-student-name').innerText = (appData.settings.studentName || '未命名') + " 的觀測站";
+            
+            if(!appData.settings.teacherMapping) appData.settings.teacherMapping = {};
+
+            const mappingGrid = document.getElementById('teacher-mapping-grid');
+            if (mappingGrid) {
+                mappingGrid.innerHTML = '';
+                SUBJECT_LIST.forEach(sub => {
+                    const teacherName = appData.settings.teacherMapping[sub] || '';
+                    mappingGrid.innerHTML += `
+                        <div class="flex flex-col bg-slate-50 p-2 sm:p-2.5 rounded-lg border border-slate-100">
+                            <span class="text-[10px] sm:text-xs font-bold text-slate-500 mb-1">${sub}</span>
+                            <input type="text" value="${teacherName}" placeholder="教師姓名" onchange="updateTeacherMapping('${sub}', this.value)" class="w-full text-xs p-1.5 border rounded outline-none focus:border-primary">
+                        </div>
+                    `;
+                });
+            }
+
+            const ul = document.getElementById('setting-checklist');
+            ul.innerHTML = '';
+            (appData.settings.checklist || []).forEach((item, index) => {
+                ul.innerHTML += `
+                    <li class="flex gap-2">
+                        <input type="text" value="${item}" onchange="updateChecklistItem(${index}, this.value)" class="flex-1 border rounded-xl p-2 sm:p-3 text-sm bg-slate-50 outline-none focus:ring-1 focus:ring-primary">
+                        <button onclick="removeChecklistItem(${index})" class="bg-red-50 text-red-500 px-3 sm:px-4 rounded-xl hover:bg-red-100 transition"><i class="fas fa-trash"></i></button>
+                    </li>
+                `;
+            });
+
+            const tbody = document.getElementById('schedule-tbody');
+            tbody.innerHTML = '';
+            for (let p = 1; p <= 10; p++) {
+                let pName = PERIOD_NAMES[p-1];
+                let pTime = PERIOD_TIMES[p-1].replace('-', '<br>');
+                let tr = `<tr class="border-b"><td class="p-1 sm:p-2 border border-slate-200 text-center font-bold text-slate-500 text-[9px] sm:text-[11px] leading-tight bg-slate-50">${pName}<br><span class="font-normal text-[8px] sm:text-[9px] text-slate-400 mt-0.5 block">${pTime}</span></td>`;
+                for (let d = 1; d <= 5; d++) {
+                    const cellData = appData.schedule[`${d}_${p}`] || { subject: '', teacher: '' };
+                    
+                    let subjectOptions = `<option value="" class="text-slate-300">選擇科目</option>`;
+                    SUBJECT_LIST.forEach(sub => {
+                        const selected = (cellData.subject === sub) ? 'selected' : '';
+                        subjectOptions += `<option value="${sub}" ${selected}>${sub}</option>`;
+                    });
+                    if (cellData.subject && !SUBJECT_LIST.includes(cellData.subject)) {
+                        subjectOptions += `<option value="${cellData.subject}" selected>${cellData.subject}</option>`;
+                    }
+
+                    tr += `
+                        <td class="p-0.5 sm:p-1 border border-slate-200 min-w-[70px] bg-white">
+                            <select onchange="updateSchedule(${d}, ${p}, 'subject', this.value)" class="w-full text-[11px] sm:text-xs text-center border-b border-slate-100 mb-0.5 outline-none bg-transparent focus:border-primary font-bold appearance-none py-1 sm:py-1.5 cursor-pointer text-slate-700">
+                                ${subjectOptions}
+                            </select>
+                            <input type="text" placeholder="老師" value="${cellData.teacher}" onchange="updateSchedule(${d}, ${p}, 'teacher', this.value)" class="w-full text-[10px] sm:text-xs text-center outline-none bg-transparent focus:text-primary placeholder-slate-300 pb-1">
+                        </td>
+                    `;
+                }
+                tr += `</tr>`;
+                tbody.innerHTML += tr;
+            }
+        }
+
+        window.saveSettings = function() {
+            appData.settings.studentName = document.getElementById('set-name').value;
+            appData.settings.weekStartDate = document.getElementById('set-date').value;
+            appData.settings.dailyTarget = parseInt(document.getElementById('set-daily').value) || 20;
+            appData.settings.weeklyTarget = parseInt(document.getElementById('set-weekly').value) || 100;
+            saveData();
+        };
+
+        window.addChecklistItem = function() {
+            if(!appData.settings.checklist) appData.settings.checklist = [];
+            if(appData.settings.checklist.length >= 6) return alert('最多設定6項檢核指標');
+            appData.settings.checklist.push('新增行為指標...');
+            saveData();
+        };
+
+        window.updateChecklistItem = function(index, val) {
+            appData.settings.checklist[index] = val;
+            saveData();
+        };
+
+        window.removeChecklistItem = function(index) {
+            appData.settings.checklist.splice(index, 1);
+            saveData();
+        };
+
+        window.updateTeacherMapping = function(subject, teacher) {
+            if (!appData.settings.teacherMapping) appData.settings.teacherMapping = {};
+            appData.settings.teacherMapping[subject] = teacher;
+            
+            for (let p = 1; p <= 10; p++) {
+                for (let d = 1; d <= 5; d++) {
+                    const code = `${d}_${p}`;
+                    if (appData.schedule[code] && appData.schedule[code].subject === subject) {
+                        appData.schedule[code].teacher = teacher;
+                    }
+                }
+            }
+            saveData();
+            renderSettings();
+        };
+
+        window.updateSchedule = function(d, p, key, val) {
+            const code = `${d}_${p}`;
+            if (!appData.schedule[code]) appData.schedule[code] = { subject: '', teacher: '' };
+            appData.schedule[code][key] = val;
+
+            if (key === 'subject') {
+                if (!appData.settings.teacherMapping) appData.settings.teacherMapping = {};
+                if (val && appData.settings.teacherMapping[val]) {
+                    appData.schedule[code].teacher = appData.settings.teacherMapping[val];
+                } else if (!val) {
+                    appData.schedule[code].teacher = ''; 
+                }
+                saveData();
+                renderSettings(); 
+                return;
+            }
+            saveData();
+        };
+
+        // ================= 模組二：極速評分介面 =================
+        function updateRatingContext() {
+            const d = currentRatingContext.d;
+            const p = currentRatingContext.p;
+            const dateStr = currentRatingContext.dateStr;
+            const schedCode = `${d}_${p}`;
+            const recordCode = `${dateStr}_${p}`;
+            const days = ['週一', '週二', '週三', '週四', '週五'];
+            const shortDate = getShortDate(getTargetDate(d));
+            
+            document.getElementById('rating-header-title').innerText = `${days[d-1]} (${shortDate}) ${PERIOD_NAMES[p-1]}`;
+            const sched = appData.schedule[schedCode] || { subject: '未設定', teacher: '未設定' };
+            document.getElementById('rate-subject').innerText = sched.subject || '未設定';
+            document.getElementById('rate-teacher').innerText = sched.teacher || '未設定';
+
+            const record = appData.records[recordCode];
+            document.getElementById('rate-note').value = record ? record.note : '';
+            
+            window.toggleRatingMode(record ? record.mode : 'A');
+            
+            if (record && record.mode === 'A') {
+                window.setModeAStar(record.stars);
+            } else if (record && record.mode === 'B') {
+                currentModeAStars = record.stars;
+                buildModeBChecklist(record.checked || []);
+            } else {
+                window.setModeAStar(0);
+                buildModeBChecklist([]);
+            }
+        }
+
+        window.toggleRatingMode = function(mode) {
+            currentRatingMode = mode;
+            const btnA = document.getElementById('mode-btn-A');
+            const btnB = document.getElementById('mode-btn-B');
+            const viewA = document.getElementById('rating-mode-A');
+            const viewB = document.getElementById('rating-mode-B');
+
+            if (mode === 'A') {
+                btnA.className = 'flex-1 px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm font-bold transition z-10 bg-white text-primary shadow-sm';
+                btnB.className = 'flex-1 px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm font-bold transition z-10 text-slate-500 hover:text-slate-700';
+                viewA.classList.remove('hidden');
+                viewB.classList.add('hidden');
+            } else {
+                btnA.className = 'flex-1 px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm font-bold transition z-10 text-slate-500 hover:text-slate-700';
+                btnB.className = 'flex-1 px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm font-bold transition z-10 bg-white text-primary shadow-sm';
+                viewA.classList.add('hidden');
+                viewB.classList.remove('hidden');
+                buildModeBChecklist(appData.records[`${currentRatingContext.dateStr}_${currentRatingContext.p}`]?.checked || []);
+            }
+        };
+
+        window.setModeAStar = function(num) {
+            currentModeAStars = num;
+            for(let i=1; i<=5; i++) {
+                const el = document.querySelector(`.star-btn[data-star="${i}"]`);
+                if(i <= num) {
+                    el.classList.remove('star-inactive', 'fa-regular');
+                    el.classList.add('star-active', 'fa-solid');
+                } else {
+                    el.classList.add('star-inactive', 'fa-solid');
+                    el.classList.remove('star-active');
+                }
+            }
+            const texts = ["", "有待加強", "還需努力", "表現平平", "表現不錯", "太棒了！"];
+            document.getElementById('mode-A-text').innerText = num > 0 ? texts[num] : "請點擊給予星數";
+        };
+
+        function buildModeBChecklist(checkedArr) {
+            const container = document.getElementById('rate-checklist');
+            container.innerHTML = '';
+            
+            if (!appData.settings.checklist || appData.settings.checklist.length === 0) {
+                container.innerHTML = '<p class="text-sm text-slate-400 text-center">請先至「設定」模組建立檢核清單</p>';
+                return;
+            }
+
+            appData.settings.checklist.forEach((item, idx) => {
+                const isChecked = checkedArr.includes(idx);
+                container.innerHTML += `
+                    <label class="flex items-start gap-2.5 sm:gap-3 p-2.5 sm:p-3 bg-white border rounded-xl active:bg-slate-50 transition cursor-pointer shadow-sm">
+                        <input type="checkbox" class="w-4 h-4 sm:w-5 sm:h-5 mt-0.5 text-primary rounded border-slate-300 focus:ring-primary mode-b-check" data-idx="${idx}" ${isChecked ? 'checked' : ''} onchange="calcModeBStars()">
+                        <span class="text-xs sm:text-sm font-medium text-slate-700 leading-snug">${item}</span>
+                    </label>
+                `;
+            });
+            window.calcModeBStars();
+        }
+
+        window.calcModeBStars = function() {
+            const checks = document.querySelectorAll('.mode-b-check');
+            const total = checks.length;
+            if(total === 0) return;
+
+            let checkedCount = 0;
+            checks.forEach(c => { if(c.checked) checkedCount++; });
+
+            let stars = 1;
+            if (checkedCount > 0) {
+                stars = 1 + Math.round((checkedCount / total) * 4);
+            }
+            
+            document.getElementById('mode-B-star-result').innerText = stars;
+            currentModeAStars = stars;
+        };
+
+        window.submitRating = function() {
+            const p = currentRatingContext.p;
+            const dateStr = currentRatingContext.dateStr;
+            const recordCode = `${dateStr}_${p}`;
+            const note = document.getElementById('rate-note').value.trim();
+            
+            let checkedArr = [];
+            if (currentRatingMode === 'B') {
+                const checks = document.querySelectorAll('.mode-b-check');
+                checks.forEach((c) => {
+                    if(c.checked) checkedArr.push(parseInt(c.getAttribute('data-idx')));
+                });
+            }
+
+            if (currentModeAStars === 0) {
+                alert('請給予至少 1 顆星的評價！');
+                return;
+            }
+
+            appData.records[recordCode] = {
+                stars: currentModeAStars,
+                note: note,
+                mode: currentRatingMode,
+                checked: checkedArr
+            };
+            
+            saveData();
+            window.showToast('已儲存！辛苦老師了');
+            
+            setTimeout(() => {
+                window.switchView('view-dashboard');
+            }, 500);
+        };
+
+        // ================= 模組三：儀表板與矩陣 =================
+        function renderDashboard() {
+            const startD = getTargetDate(1);
+            const endD = getTargetDate(5);
+            document.getElementById('dash-week-label').innerText = `${getShortDate(startD)} - ${getShortDate(endD)}`;
+
+            const daysName = ['', '一', '二', '三', '四', '五'];
+            for(let d=1; d<=5; d++) {
+                document.getElementById(`dash-th-${d}`).innerHTML = `${daysName[d]}<br><span class="text-[9px] sm:text-[10px] text-slate-400 font-normal mt-0.5 block">${getShortDate(getTargetDate(d))}</span>`;
+            }
+
+            const todayStr = formatDateStr(new Date());
+            let todayStars = 0;
+            for (let p = 1; p <= 10; p++) {
+                const rec = appData.records[`${todayStr}_${p}`];
+                if (rec) todayStars += rec.stars;
+            }
+
+            document.getElementById('dash-daily-target').innerText = appData.settings.dailyTarget || 20;
+            
+            const startStars = parseInt(document.getElementById('dash-today-stars').innerText) || 0;
+            animateValue("dash-today-stars", startStars, todayStars, 800);
+            
+            const percentage = Math.min(100, (todayStars / (appData.settings.dailyTarget || 1)) * 100);
+            setTimeout(() => {
+                document.getElementById('dash-progress-bar').style.width = percentage + '%';
+            }, 100);
+
+            const cheerEl = document.getElementById('dash-cheer');
+            if (todayStars >= appData.settings.dailyTarget && todayStars > 0) {
+                cheerEl.classList.remove('opacity-0');
+                if(startStars < appData.settings.dailyTarget) triggerConfetti(); 
+            } else {
+                cheerEl.classList.add('opacity-0');
+            }
+
+            const tbody = document.getElementById('dash-matrix-body');
+            tbody.innerHTML = '';
+            for (let p = 1; p <= 10; p++) {
+                let pName = PERIOD_NAMES[p-1];
+                
+                // 將長節次名稱簡化以適應手機小螢幕
+                let shortPName = pName.replace('自修', '自修').replace('時間', '');
+                
+                let pTime = PERIOD_TIMES[p-1].replace('-', '<br>');
+                let tr = `<tr class="border-b border-slate-100"><td class="py-1 px-0.5 font-bold text-slate-500 text-[10px] sm:text-xs text-center border-r border-slate-200 bg-slate-50 leading-tight">${shortPName}<br><span class="font-normal text-[8px] sm:text-[9px] text-slate-400 mt-0.5 block">${pTime}</span></td>`;
+                for (let d = 1; d <= 5; d++) {
+                    const dateStr = formatDateStr(getTargetDate(d));
+                    const recordCode = `${dateStr}_${p}`;
+                    const schedCode = `${d}_${p}`;
+                    
+                    const rec = appData.records[recordCode];
+                    const sched = appData.schedule[schedCode] || { subject: '', teacher: '' };
+                    let subjectName = sched.subject || '<span class="text-slate-300 text-[9px] font-normal">未設定</span>';
+
+                    let bgColor = 'bg-white hover:bg-sky-50';
+                    let content = `<div class="text-[10px] sm:text-[11px] font-bold text-slate-600 w-full text-center truncate leading-tight">${subjectName}</div>`;
+
+                    if (rec) {
+                        if(rec.stars >= 5) bgColor = 'bg-amber-100 border border-amber-300 shadow-inner z-10';
+                        else bgColor = 'bg-amber-50 border border-amber-200 z-10';
+
+                        content = `
+                            <div class="text-[10px] sm:text-[11px] font-bold text-slate-800 w-full text-center truncate leading-tight">${subjectName}</div>
+                            <div class="text-star text-[10px] sm:text-xs mt-0.5 font-bold drop-shadow-sm"><i class="fas fa-star text-[9px]"></i> ${rec.stars}</div>
+                        `;
+                    }
+                    
+                    tr += `<td class="p-0 border-r border-slate-100 cursor-pointer active:bg-slate-100 transition relative align-middle ${bgColor}" onclick="openRatingScreen(${d}, ${p}, '${dateStr}')">
+                        <div class="w-full h-11 sm:h-12 flex flex-col items-center justify-center overflow-hidden px-0.5">
+                            ${content}
+                        </div>
+                    </td>`;
+                }
+                tr += `</tr>`;
+                tbody.innerHTML += tr;
+            }
+        }
+
+        function triggerConfetti() {
+            var duration = 3 * 1000;
+            var animationEnd = Date.now() + duration;
+            var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 1000 };
+            function randomInRange(min, max) { return Math.random() * (max - min) + min; }
+
+            var interval = setInterval(function() {
+                var timeLeft = animationEnd - Date.now();
+                if (timeLeft <= 0) return clearInterval(interval);
+                var particleCount = 50 * (timeLeft / duration);
+                confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } }));
+                confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } }));
+            }, 250);
+        }
+
+        function animateValue(id, start, end, duration) {
+            if (start === end) return;
+            var range = end - start;
+            var current = start;
+            var increment = end > start ? 1 : -1;
+            var stepTime = Math.abs(Math.floor(duration / Math.max(Math.abs(range), 1)));
+            var obj = document.getElementById(id);
+            var timer = setInterval(function() {
+                current += increment;
+                obj.innerHTML = current;
+                if (current == end) clearInterval(timer);
+            }, stepTime);
+        }
+
+        // ================= 模組四：圖表分析與匯出 =================
+        window.renderAnalytics = function() {
+            document.getElementById('chart-student-name').innerText = appData.settings.studentName || '未命名';
+            document.getElementById('chart-report-title').innerText = currentChartMode === 'week' ? '的每週報告' : '的每月報告';
+
+            let labels = [];
+            let data = [];
+            let targetValue = 0;
+            let totalStars = 0;
+            let labelName = '';
+
+            if (currentChartMode === 'week') {
+                targetValue = appData.settings.dailyTarget || 20;
+                labelName = '每日目標';
+                labels = ['一', '二', '三', '四', '五']; // 手機版精簡文字
+                data = [0, 0, 0, 0, 0];
+
+                for (let d = 1; d <= 5; d++) {
+                    const dateStr = formatDateStr(getTargetDate(d));
+                    for (let p = 1; p <= 10; p++) {
+                        const rec = appData.records[`${dateStr}_${p}`];
+                        if (rec) {
+                            data[d-1] += rec.stars;
+                            totalStars += rec.stars;
+                        }
+                    }
+                }
+                document.getElementById('chart-target-text').innerHTML = `/ <span class="font-bold">${appData.settings.weeklyTarget || 100}</span> (週)`;
+            } else {
+                targetValue = appData.settings.weeklyTarget || 100;
+                labelName = '每週目標';
+                
+                const monthStr = document.getElementById('analytics-month').value;
+                if(!monthStr) return;
+                
+                const [year, month] = monthStr.split('-').map(Number);
+                const daysInMonth = new Date(year, month, 0).getDate();
+                const weeksMap = {}; 
+
+                for (let i = 1; i <= daysInMonth; i++) {
+                    const date = new Date(year, month - 1, i);
+                    const dayOfWeek = date.getDay();
+                    if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+                        const monday = getMonday(date);
+                        const mondayStr = formatDateStr(monday);
+                        if (!weeksMap[mondayStr]) weeksMap[mondayStr] = 0;
+
+                        const dateStr = formatDateStr(date);
+                        for (let p = 1; p <= 10; p++) {
+                            const rec = appData.records[`${dateStr}_${p}`];
+                            if (rec) weeksMap[mondayStr] += rec.stars;
+                        }
+                    }
+                }
+
+                let weekIndex = 1;
+                const sortedMondays = Object.keys(weeksMap).sort();
+                for (const monStr of sortedMondays) {
+                    const parts = monStr.split('-');
+                    if(parts.length === 3) {
+                        const m = parseInt(parts[1], 10);
+                        const d = parseInt(parts[2], 10);
+                        labels.push(`第 ${weekIndex} 週`); // 手機版精簡
+                        data.push(weeksMap[monStr]);
+                        totalStars += weeksMap[monStr];
+                        weekIndex++;
+                    }
+                }
+                document.getElementById('chart-target-text').innerHTML = `(月總計)`;
+            }
+
+            document.getElementById('chart-total-stars').innerText = totalStars;
+
+            const canvasElement = document.getElementById('weeklyChart');
+            if (chartInstance) chartInstance.destroy();
+
+            const targetLineData = Array(labels.length).fill(targetValue);
+
+            chartInstance = new Chart(canvasElement, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            type: 'line', label: labelName, data: targetLineData,
+                            borderColor: '#EF4444', borderWidth: 2, borderDash: [5, 5], fill: false, pointRadius: 0
+                        },
+                        {
+                            type: 'bar', label: '獲得星數', data: data,
+                            backgroundColor: 'rgba(14, 165, 233, 0.8)', borderRadius: 4, barPercentage: 0.6
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: { y: { beginAtZero: true, suggestedMax: Math.max(targetValue + 5, 35) } },
+                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } }
+                }
+            });
+        };
+
+        window.downloadPNG = function() {
+            const node = document.getElementById('export-capture-area');
+            node.style.backgroundColor = '#ffffff';
+            html2canvas(node, { scale: 2 }).then(canvas => {
+                const link = document.createElement('a');
+                const modeName = currentChartMode === 'week' ? '每週圖表' : '每月圖表';
+                link.download = `${appData.settings.studentName}_${modeName}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                node.style.backgroundColor = ''; 
+            });
+        };
+
+        window.downloadWord = function() {
+            const days = ['週一', '週二', '週三', '週四', '週五'];
+            let tableHTML = `<table border="1" style="border-collapse: collapse; width: 100%; text-align: center;">
+                <tr style="background-color: #f2f2f2;"><th>節次</th>`;
+            
+            for(let d=1; d<=5; d++) {
+                tableHTML += `<th>${days[d-1]}<br>(${getShortDate(getTargetDate(d))})</th>`;
+            }
+            tableHTML += `</tr>`;
+            
+            for(let p=1; p<=10; p++) {
+                tableHTML += `<tr><td>${PERIOD_NAMES[p-1]}</td>`;
+                for(let d=1; d<=5; d++) {
+                    const dateStr = formatDateStr(getTargetDate(d));
+                    const rec = appData.records[`${dateStr}_${p}`];
+                    const sched = appData.schedule[`${d}_${p}`] || {subject:''};
+                    if(rec) tableHTML += `<td><b>${sched.subject}</b><br>${rec.stars} 星<br><span style="font-size: 12px; color: #555;">${rec.note || ''}</span></td>`;
+                    else tableHTML += `<td></td>`;
+                }
+                tableHTML += `</tr>`;
+            }
+            tableHTML += `</table>`;
+
+            const htmlContent = `
+            <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+            <head><meta charset="utf-8"><title>每週行為紀錄報告</title><style>body{font-family:"Microsoft JhengHei",sans-serif;}h1{color:#0EA5E9;text-align:center;}</style></head>
+            <body>
+                <h1>${appData.settings.studentName} 的每週行為紀錄報告</h1>
+                <p><b>紀錄日期：</b>自 ${appData.settings.weekStartDate} 起</p>
+                ${tableHTML}
+                <br><p><i>本報表由正向行為支持數位觀測系統自動生成。</i></p>
+            </body>
+            </html>`;
+
+            const blob = new Blob(['\ufeff', htmlContent], { type: 'application/msword' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `${appData.settings.studentName}_行為紀錄表.doc`; a.click();
+            URL.revokeObjectURL(url);
+        };
+
+        // 啟動應用程式
+        initApp();
+
+    </script>
+</body>
+</html>
